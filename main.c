@@ -86,9 +86,13 @@ static void *cl_init(struct fuse_conn_info * conn) {//initialize
       files[i] = myFileTmp;
     }
 
+
+    //------------------------------------------------------------------------------------------//
+    //-----------------------------   Создаём 2 пробных файла   --------------------------------//
+    //------------------------------------------------------------------------------------------//
     NodeType *myFile = (NodeType *)malloc(sizeof(NodeType));
     myFile->idCluster = freeCluster->id;
-    LinkCl tmpcluster = freeCluster;
+    //LinkCl tmpcluster = freeCluster;----------------------------------------------------------------------------------
     myFile->firstCl = freeCluster;
     myFile->index = 1;
     myFile->isEmpty = 0;
@@ -104,11 +108,8 @@ static void *cl_init(struct fuse_conn_info * conn) {//initialize
     files[2] = myFile1;
     freeCluster = freeCluster->nextCluster;
 
-    //tmpcluster->nextCluster = 0;
     files[1]->firstCl->nextCluster = 0;
     files[2]->firstCl->nextCluster = 0;
-
-    printf("Filesystem has been initialized!\n");
 
     return NULL;
 }

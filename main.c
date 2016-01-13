@@ -1,4 +1,6 @@
 #define CLUSTERSIZE 10
+#define CLUSTERCOUNT 20
+#define FILECOUNT 100
 
 #include <fuse.h>
 #include <stdio.h>
@@ -30,7 +32,9 @@ struct  Node
 
 typedef struct Node NodeType;
 
-//нужно будет реализовать:
+//------------------------------------------------------------------------------------------------------------------//
+//------------------------------------------   Нужно будет реализовать   -------------------------------------------//
+//------------------------------------------------------------------------------------------------------------------//
 
 //поиск файла в кластерах папки
 NodeType* seekFile(NodeType* node,char* name);
@@ -50,6 +54,81 @@ void deleteFileFromCl(NodeType* node);
 LinkCl getEndCl();
 //удаление информации из дириктории
 void deleteFromDir(const char* path);
+
+
+static LinkCl freeCluster;
+static NodeType* files[FILECOUNT];
+static LinkCl clusters[CLUSTERCOUNT];
+
+
+//------------------------------------------------------------------------------------------------------------------//
+//------------------------------------------   Методы и ф-ии для Fuse   --------------------------------------------//
+//------------------------------------------------------------------------------------------------------------------//
+
+static void *cl_init(struct fuse_conn_info * conn) {//initialize
+    //char *tmpFiles = " test 1 test1 2";
+    NodeType *myDir = (NodeType *)malloc(sizeof(NodeType));
+    myDir->isDir = 1; //говорим, что это дирректория
+    myDir->idCluster = 0; //присваиваем 0 id кластера
+    
+
+    createFreeClusters();
+    myDir->firstCl = freeCluster; //присваиваем пустой кластер
+
+
+
+
+    writeToClusters(tmpFiles, myDir->firstCl);
+    //printf("%d\n",myDir->firstCl->nextCluster->isFull);
+    //myDir->firstCl->nextCluster->isFull = 1;
+    files[0] = myDir;
+ 
+
+    //create files
+    for(int i = 1; i<100; i++){
+      NodeType *myFileTmp = (NodeType *)malloc(sizeof(NodeType));
+      myFileTmp->isEmpty = 1;
+      myFileTmp->isDir = 0;
+      files[i] = myFileTmp;
+    }
+
+    //create clusters
+
+
+    /*for(int i = 0; i<CLUSTERCOUNT-1; i++){
+      printf("id = %d\n", clusters[i]->id);
+      printf("content = %s\n", clusters[i]->content);
+    }*/
+    
+    printf("id = %d\n", freeCluster->id);
+    printf("content = %s\n", freeCluster->content);
+
+    NodeType *myFile = (NodeType *)malloc(sizeof(NodeType));
+    myFile->idCluster = freeCluster->id;
+    LinkCl tmpcluster = freeCluster;
+    myFile->firstCl = freeCluster;
+    myFile->index = 1;
+    myFile->isEmpty = 0;
+    files[1] = myFile;
+    freeCluster = freeCluster->nextCluster;
+    
+
+    NodeType *myFile1 = (NodeType *)malloc(sizeof(NodeType));
+    myFile1->idCluster = freeCluster->id;
+    myFile1->firstCl = freeCluster;
+    myFile1->index = 2;
+    myFile1->isEmpty = 0;
+    files[2] = myFile1;
+    freeCluster = freeCluster->nextCluster;
+
+    //tmpcluster->nextCluster = 0;
+    files[1]->firstCl->nextCluster = 0;
+    files[2]->firstCl->nextCluster = 0;
+
+    printf("Filesystem has been initialized!\n");
+
+    return NULL;
+}
 
 static int cl_getattr(const char *path, struct stat *stbuf)
 {
@@ -125,4 +204,61 @@ int main(int argc, char *argv[])
     operations.read = cl_read;
  
     return fuse_main(argc, argv, &operations, 0);
+}
+
+
+//------------------------------------------------------------------------------------------------------------------//
+//---------------------------------------   Мои вспомогательне функции   -------------------------------------------//
+//------------------------------------------------------------------------------------------------------------------//
+
+
+void writeToClusters(const char* content, LinkCl cluster){
+  int len = strlen(content);
+
+  int j = 0;
+  LinkCl tmpCluster = cluster;
+
+  while(tmpCluster->isFull == 1)//пропускаем, если кластер заполнен, пока не нейдём свободный
+  {
+    tmpCluster = tmpCluster->nextCluster;
+  }
+  while(tmpCluster->content[j] != '\0')
+  {
+    printf("%d\n", j++);//выводим содержимое (нахуя?!)
+  }
+
+  printf("%s\n", content);//выводим нужный нам контент (опять же хачем?)
+
+  int i, iCon = -1; //нужны для счётчика
+  LinkCl tmpClusterWrite = tmpCluster;  //кластер, в который в данный момент записывают
+  //добавление кластеров и дозапись
+  while(iCon<len){
+    for(i = j; i<CLUSTERSIZE; i++) //дописываем в кластер нужную информацию
+    {
+      if(iCon < len)
+      {
+        tmpClusterWrite->content[i] = content[++iCon];
+      }
+    }
+
+    if(iCon < len)  //создаём новый кластер
+    {
+      tmpClusterWrite->isFull = 1;
+      if(tmpClusterWrite->nextCluster == 0)
+      {
+        tmpClusterWrite->nextCluster = freeCluster;
+      }
+
+      tmpClusterWrite = tmpCluster->nextCluster;
+    }
+    j = 0;  //обнуляем счётчик, что бы записывалось в начало след. кластера
+  }
+  if(tmpClusterWrite->nextCluster != 0)//если у кластера остались "наследники", 
+    //то программа обозначает след. наследника как пустой, что бы в след. раз всё писалось в него
+  {
+    freeCluster  = tmpClusterWrite->nextCluster;
+    tmpClusterWrite->nextCluster = 0;//говорит, что наследников нет
+  }
+  tmpClusterWrite->content[i] = '\0'; //записываем окончание файла
+
 }

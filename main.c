@@ -30,6 +30,27 @@ struct  Node
 
 typedef struct Node NodeType;
 
+//нужно будет реализовать:
+
+//поиск файла в кластерах папки
+NodeType* seekFile(NodeType* node,char* name);
+//поиск файла путем парсинга path (будет вызывать seekFile)
+NodeType* seekConcreteFile(const char* path);
+//создание пустых кластеров
+void createFreeClusters();
+//получение имени файла
+char* getName(const char* path);
+//получение имени дириктории в которой находится файл
+char* getRootName(const char* path);
+//запись в кластеры
+void writeToClusters(const char* content, LinkCl cluster);
+//удаление файла из кластеров и массива файлов
+void deleteFileFromCl(NodeType* node);
+//получение последнего свободного кластера (для удаления)
+LinkCl getEndCl();
+//удаление информации из дириктории
+void deleteFromDir(const char* path);
+
 static int cl_getattr(const char *path, struct stat *stbuf)
 {
     int res = 0;

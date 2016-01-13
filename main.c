@@ -70,11 +70,10 @@ void deleteFromDir(const char* path);
 //------------------------------------------------------------------------------------------------------------------//
 
 static void *cl_init(struct fuse_conn_info * conn) {//initialize
-    char *tmpFiles = " test 1 test1 2";
+    char *tmpFiles = " test.c 1 test1.c 2";
     NodeType *myDir = (NodeType *)malloc(sizeof(NodeType));
     myDir->isDir = 1; //говорим, что это дирректория
     myDir->idCluster = 0; //присваиваем 0 id кластера
-    
 
     createFreeClusters();
     myDir->firstCl = freeCluster; //присваиваем пустой кластер
@@ -101,7 +100,6 @@ static void *cl_init(struct fuse_conn_info * conn) {//initialize
     myFile->isEmpty = 0;
     files[1] = myFile;
     freeCluster = freeCluster->nextCluster;
-    
 
     NodeType *myFile1 = (NodeType *)malloc(sizeof(NodeType));
     myFile1->idCluster = freeCluster->id;
@@ -341,7 +339,8 @@ void createFreeClusters()
 
   char str[10];
   clusters[0] = tmpCluster;
-  for (int i = 1; i<CLUSTERCOUNT; i++){
+  for (int i = 1; i<CLUSTERCOUNT; i++)
+  {
     LinkCl cluster = (LinkCl)malloc(sizeof(ClusterType));
     
     sprintf(str, "%d", i);
@@ -355,3 +354,35 @@ void createFreeClusters()
   }
 }
 
+char* getName(const char* path)
+{
+  char str[100];
+  char sep [10]="/";
+
+  strcpy(str,path);
+  char *istr;
+  char *tmp;
+  istr = strtok (str,sep);
+  while (istr != NULL)
+  {
+    tmp=istr;
+    istr = strtok (NULL,sep);
+  }
+  return tmp;
+}
+
+char* getRootName(const char* path){
+  printf("getRootName %s\n", path);
+  char *tmpPath = (char *)malloc(sizeof(char)*strlen(path));
+  strcpy(tmpPath,path);
+  int i = 0;
+  for(i = strlen(tmpPath); i>=0; i--){
+    if(tmpPath[i] == '/')
+    {
+      break;
+    }
+  }
+  printf("\n");
+  tmpPath[i+1] = '\0';
+  return tmpPath;
+}

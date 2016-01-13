@@ -64,6 +64,7 @@ void deleteFileFromCl(NodeType* node);
 LinkCl getEndCl();
 //удаление информации из дириктории
 void deleteFromDir(const char* path);
+
 //------------------------------------------------------------------------------------------------------------------//
 //------------------------------------------   Методы и ф-ии для Fuse   --------------------------------------------//
 //------------------------------------------------------------------------------------------------------------------//
@@ -78,20 +79,20 @@ static void *cl_init(struct fuse_conn_info * conn) {//initialize
     createFreeClusters();
     myDir->firstCl = freeCluster; //присваиваем пустой кластер
     writeToClusters(tmpFiles, myDir->firstCl); //проверка 
-    files[0] = myDir;
+    files[0] = myDir;//корневая папка
 
     //забиваем всё оставшееся место файлами
-    for(int i = 1; i<100; i++){
+    for(int i = 1; i<FILECOUNT; i++){
       NodeType *myFileTmp = (NodeType *)malloc(sizeof(NodeType));
       myFileTmp->isEmpty = 1;
       myFileTmp->isDir = 0;
       files[i] = myFileTmp;
     }
 
+    //-----------------------------//
+    //   Создаём 2 пробных файла   //
+    //-----------------------------//
 
-    //------------------------------------------------------------------------------------------//
-    //-----------------------------   Создаём 2 пробных файла   --------------------------------//
-    //------------------------------------------------------------------------------------------//
     NodeType *myFile = (NodeType *)malloc(sizeof(NodeType));
     myFile->idCluster = freeCluster->id;
     //LinkCl tmpcluster = freeCluster;----------------------------------------------------------------------------------
@@ -207,8 +208,7 @@ NodeType* seekFile(NodeType *node, char* name)
   int listOfInod[10];
   char listOfNames[10][30];
 
-  while(tmpcluster != 0)//находим последний кластер файла, 
-  //что бы не проверять 1 и тот же по кадому кластеру
+  while(tmpcluster != 0)
   {
     strcat(mybuf, tmpcluster->content);
     tmpcluster = tmpcluster->nextCluster;
@@ -245,6 +245,43 @@ NodeType* seekFile(NodeType *node, char* name)
     }
   }
   return files[99];
+}
+
+NodeType* seekConcreteFile(const char* path)
+{
+  if(strcmp(path, "/") == 0)//запрос корневой папки
+  {
+    return files[0];
+  }
+
+  char listOfFiles[10][30];
+  int count = -1;
+  
+  char str[100];
+  char sep [10]="/";
+  strcpy(str,path);
+  char *istr;
+  char *tmp;
+  istr = strtok (str,sep);
+
+  while (istr != NULL)
+  {
+    tmp=istr;
+    strcpy(listOfFiles[++count],tmp);
+    istr = strtok (NULL,sep);
+  }
+
+  NodeType* node = files[0];
+  NodeType* tmpNode = seekFile(node,listOfFiles[0]);
+  node = tmpNode;
+  
+  for(int i = 1; i<=count; i++)
+  {
+    tmpNode = seekFile(node,listOfFiles[i]);
+    node = tmpNode;
+  }
+  
+  return node;
 }
 
 void writeToClusters(const char* content, LinkCl cluster){

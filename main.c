@@ -371,7 +371,8 @@ char* getName(const char* path)
   return tmp;
 }
 
-char* getRootName(const char* path){
+char* getRootName(const char* path)
+{
   printf("getRootName %s\n", path);
   char *tmpPath = (char *)malloc(sizeof(char)*strlen(path));
   strcpy(tmpPath,path);
@@ -385,4 +386,16 @@ char* getRootName(const char* path){
   printf("\n");
   tmpPath[i+1] = '\0';
   return tmpPath;
+}
+
+void deleteFileFromCl(NodeType* node)
+{
+  node->isEmpty = 1;
+  LinkCl tmpcluster = node->firstCl;
+
+  while(tmpcluster->nextCluster != 0){
+    tmpcluster = tmpcluster->nextCluster;
+  }
+  tmpcluster->nextCluster = freeCluster;
+  freeCluster = node->firstCl;
 }

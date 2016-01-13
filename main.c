@@ -7,6 +7,7 @@
 #include <string.h>
 #include <errno.h>
 #include <fcntl.h>
+#include <stdlib.h>
  
 static const char *hello_str = "It`s work!\n";
 static const char *hello_path = "/hello";
@@ -35,6 +36,7 @@ struct  Node
 };
 
 typedef struct Node NodeType;
+typedef struct Cluster ClusterType;
 
 static LinkCl freeCluster;
 static NodeType* files[FILECOUNT];
@@ -194,6 +196,56 @@ int main(int argc, char *argv[])
 //------------------------------------------------------------------------------------------------------------------//
 //---------------------------------------   Мои вспомогательне функции   -------------------------------------------//
 //------------------------------------------------------------------------------------------------------------------//
+
+NodeType* seekFile(NodeType *node, char* name)
+{
+  LinkCl tmpcluster = node->firstCl;
+  
+  char mybuf[100];
+  //mpcluster = tmpcluster->nextCluster;
+  
+  int listOfInod[10];
+  char listOfNames[10][30];
+
+  while(tmpcluster != 0)//находим последний кластер файла, 
+  //что бы не проверять 1 и тот же по кадому кластеру
+  {
+    strcat(mybuf, tmpcluster->content);
+    tmpcluster = tmpcluster->nextCluster;
+  } 
+
+  char sep[10] = " ";
+
+  char *istr;
+  char *tmp;
+
+  istr = strtok(mybuf,sep);
+  int flag = 1;
+  int index = -1;
+  while (istr != NULL)
+  {
+    tmp=istr;
+    if(flag>0){
+      strcpy(listOfNames[++index],tmp);
+    }
+    else
+    {
+      listOfInod[index] = atoi(tmp);
+    }
+    flag =-flag;
+    istr = strtok (NULL,sep);
+  }
+   
+  for(int i = 0; i<index+1; i++)
+  {
+    if(strcmp(name, listOfNames[i]) == 0)
+    {
+      printf("seekFile--->Нашел %s\n", listOfNames[i]);
+      return files[listOfInod[i]];
+    }
+  }
+  return files[99];
+}
 
 void writeToClusters(const char* content, LinkCl cluster){
   int len = strlen(content);

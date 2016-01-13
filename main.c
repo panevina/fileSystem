@@ -11,6 +11,10 @@
 static const char *hello_str = "It`s work!\n";
 static const char *hello_path = "/hello";
 
+//------------------------------------------------------------------------------------------------------------------//
+//----------------------------------------------   Claster & Node   ------------------------------------------------//
+//------------------------------------------------------------------------------------------------------------------//
+
 typedef struct Cluster* LinkCl; //сылка на кластер
 struct Cluster //кластер
 {
@@ -31,6 +35,10 @@ struct  Node
 };
 
 typedef struct Node NodeType;
+
+static LinkCl freeCluster;
+static NodeType* files[FILECOUNT];
+static LinkCl clusters[CLUSTERCOUNT];
 
 //------------------------------------------------------------------------------------------------------------------//
 //------------------------------------------   Нужно будет реализовать   -------------------------------------------//
@@ -54,19 +62,12 @@ void deleteFileFromCl(NodeType* node);
 LinkCl getEndCl();
 //удаление информации из дириктории
 void deleteFromDir(const char* path);
-
-
-static LinkCl freeCluster;
-static NodeType* files[FILECOUNT];
-static LinkCl clusters[CLUSTERCOUNT];
-
-
 //------------------------------------------------------------------------------------------------------------------//
 //------------------------------------------   Методы и ф-ии для Fuse   --------------------------------------------//
 //------------------------------------------------------------------------------------------------------------------//
 
 static void *cl_init(struct fuse_conn_info * conn) {//initialize
-    //char *tmpFiles = " test 1 test1 2";
+    char *tmpFiles = " test 1 test1 2";
     NodeType *myDir = (NodeType *)malloc(sizeof(NodeType));
     myDir->isDir = 1; //говорим, что это дирректория
     myDir->idCluster = 0; //присваиваем 0 id кластера
@@ -74,34 +75,16 @@ static void *cl_init(struct fuse_conn_info * conn) {//initialize
 
     createFreeClusters();
     myDir->firstCl = freeCluster; //присваиваем пустой кластер
-
-
-
-
-    writeToClusters(tmpFiles, myDir->firstCl);
-    //printf("%d\n",myDir->firstCl->nextCluster->isFull);
-    //myDir->firstCl->nextCluster->isFull = 1;
+    writeToClusters(tmpFiles, myDir->firstCl); //проверка 
     files[0] = myDir;
- 
 
-    //create files
+    //забиваем всё оставшееся место файлами
     for(int i = 1; i<100; i++){
       NodeType *myFileTmp = (NodeType *)malloc(sizeof(NodeType));
       myFileTmp->isEmpty = 1;
       myFileTmp->isDir = 0;
       files[i] = myFileTmp;
     }
-
-    //create clusters
-
-
-    /*for(int i = 0; i<CLUSTERCOUNT-1; i++){
-      printf("id = %d\n", clusters[i]->id);
-      printf("content = %s\n", clusters[i]->content);
-    }*/
-    
-    printf("id = %d\n", freeCluster->id);
-    printf("content = %s\n", freeCluster->content);
 
     NodeType *myFile = (NodeType *)malloc(sizeof(NodeType));
     myFile->idCluster = freeCluster->id;
@@ -211,7 +194,6 @@ int main(int argc, char *argv[])
 //---------------------------------------   Мои вспомогательне функции   -------------------------------------------//
 //------------------------------------------------------------------------------------------------------------------//
 
-
 void writeToClusters(const char* content, LinkCl cluster){
   int len = strlen(content);
 
@@ -222,12 +204,11 @@ void writeToClusters(const char* content, LinkCl cluster){
   {
     tmpCluster = tmpCluster->nextCluster;
   }
+
   while(tmpCluster->content[j] != '\0')
   {
-    printf("%d\n", j++);//выводим содержимое (нахуя?!)
+    j++;
   }
-
-  printf("%s\n", content);//выводим нужный нам контент (опять же хачем?)
 
   int i, iCon = -1; //нужны для счётчика
   LinkCl tmpClusterWrite = tmpCluster;  //кластер, в который в данный момент записывают
@@ -262,3 +243,25 @@ void writeToClusters(const char* content, LinkCl cluster){
   tmpClusterWrite->content[i] = '\0'; //записываем окончание файла
 
 }
+
+void createFreeClusters()
+{
+  freeCluster = (LinkCl)malloc(sizeof(ClusterType));//выделяем память
+  LinkCl tmpCluster = freeCluster;
+
+  char str[10];
+  clusters[0] = tmpCluster;
+  for (int i = 1; i<CLUSTERCOUNT; i++){
+    LinkCl cluster = (LinkCl)malloc(sizeof(ClusterType));
+    
+    sprintf(str, "%d", i);
+    //проверка кластеров
+    //strncpy(cluster->content, str, sizeof(cluster->content));
+    tmpCluster->isFull = 0;
+    tmpCluster->id = i;
+    tmpCluster->nextCluster = cluster;
+    clusters[i] = cluster;
+    tmpCluster = cluster;
+  }
+}
+

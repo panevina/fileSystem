@@ -53,23 +53,22 @@ static struct fuse_operations oper = {
 //----------------------------------------------   Claster & Node   ------------------------------------------------//
 //------------------------------------------------------------------------------------------------------------------//
 
-typedef struct Cluster* LinkCl; //сылка на кластер
-struct Cluster //кластер
+typedef struct Cluster* LinkCl; 
+struct Cluster                  //кластер
 {
-    int id;
-    int isFull;
-    char content[CLUSTERSIZE]; //содержимое 1 кластера
-    LinkCl nextCluster; //ссылка на следующий кластер
+    int id;                     //у каждого кластера имеется свой id
+    int isFull;                 //когда кластер заполняется - то это обозначатся
+    char content[CLUSTERSIZE];  //содержимое 1 кластера
+    LinkCl nextCluster;         //ссылка на следующий кластер
 };
 
-struct  Node
-{
-    int idCluster; //id первого кластера
+struct Node         //Node - хранит в себе информацию о файле или же дирректории 
+{                   //(т.е. Node может быть как файлом, так и дирректорией)
+    int idCluster;  //id первого кластера
     LinkCl firstCl; //ссылка на самый первый кластер
-    int isDir;  //пояснение о дирректории
-    int isEmpty;  //проверка существования
-    int index;  
-    //int childCount;
+    int isDir;      //пояснение о дирректории (т.е. истина, если то дирректориия)
+    int isEmpty;    //проверка существования
+    int index;      //индекс
 };
 
 typedef struct Node NodeType;
@@ -80,25 +79,33 @@ static NodeType* files[FILECOUNT];
 static LinkCl clusters[CLUSTERCOUNT];
 
 //------------------------------------------------------------------------------------------------------------------//
-//---------------------------------   Функции для работы кластерной ф.системы   ------------------------------------//
+//---------------------------   Прототипы функций для работы с кластерной ф.системы   ------------------------------//
 //------------------------------------------------------------------------------------------------------------------//
 
 //поиск файла в кластерах папки
 NodeType* seekFile(NodeType* node,char* name);
+
 //поиск файла путем парсинга path (будет вызывать seekFile)
 NodeType* seekConcreteFile(const char* path);
+
 //создание пустых кластеров
 void createFreeClusters();
+
 //получение имени файла
 char* getName(const char* path);
+
 //получение имени дириктории в которой находится файл
 char* getRootName(const char* path);
+
 //запись в кластеры
 void writeToClusters(const char* content, LinkCl cluster);
+
 //удаление файла из кластеров и массива файлов
 void deleteFileFromCl(NodeType* node);
+
 //получение последнего свободного кластера (для удаления)
 LinkCl getEndCl();
+
 //удаление информации из дириктории
 void deleteFromDir(const char* path);
 
@@ -106,6 +113,55 @@ void deleteFromDir(const char* path);
 //------------------------------------------   Методы и ф-ии для Fuse   --------------------------------------------//
 //------------------------------------------------------------------------------------------------------------------//
 
+//-----------------------------//
+//  Init                       //
+//-----------------------------//
+
+static void *cl_init(struct fuse_conn_info * conn) 
+{                                                         //В случае, когда Node - папка, то содержимое его файлов
+  char *tmpFiles = " test 1 test1 2";                     //описываются след. образом:
+  NodeType *myDir = (NodeType *)malloc(sizeof(NodeType)); // *имя файла* *индекс в массиве файлов*
+  myDir->isDir = 1; //говорим, что это директория         // (т.е. " test 1 " означает, что в папке есть файл test,
+  myDir->idCluster = 0; //и брём первый кластер           // а в массиве файлов он в ячейке 1)
+
+  createFreeClusters();                       //Создаём очередь пустых кластеров, которые мы будем использовать для записи.
+  myDir->firstCl = freeCluster;               //Первым кластером главной дирректории становится первый кластер из очереди свободных
+  writeToClusters(tmpFiles, myDir->firstCl);  //В корневую папку записывается информация о создании 2х файлов (test & test1 см. выше)
+  files[0] = myDir;                           //сама дирректория становится первым файлом в массиве файлов
+ 
+  for(int i = 1; i<100; i++)  //данный цикл заполняет пустыми файлами массив файлов
+  {
+    NodeType *myFileTmp = (NodeType *)malloc(sizeof(NodeType));
+    myFileTmp->isEmpty = 1;
+    myFileTmp->isDir = 0;
+    files[i] = myFileTmp;
+  }
+
+  NodeType *myFile = (NodeType *)malloc(sizeof(NodeType));  //это создаются 2 тестовых файла (test & test1)
+  myFile->idCluster = freeCluster->id;            //Новому кластеру присваивается id первого кластера из очереди(работаем ссылками).
+  LinkCl tmpcluster = freeCluster;                //Берём этот первый кластер из очерди свободных          
+  myFile->firstCl = freeCluster;                  
+  myFile->index = 1;                              //Индекс 1, т.к. 1й файл
+  myFile->isEmpty = 0;                            //Файл существует
+  writeToClusters("Its work!", myFile->firstCl);  //Записываем в файл фразу "Its work!" что бы проверить работоспособность метода
+  files[1] = myFile;
+  freeCluster = freeCluster->nextCluster;
+    
+  //тут всё просиходит аналогично 1му, только файл - пуст
+  NodeType *myFile1 = (NodeType *)malloc(sizeof(NodeType)); 
+  myFile1->idCluster = freeCluster->id;
+  myFile1->firstCl = freeCluster;
+  myFile1->index = 2;
+  myFile1->isEmpty = 0;
+  files[2] = myFile1;
+  freeCluster = freeCluster->nextCluster;
+
+  files[1]->firstCl->nextCluster = 0;
+  files[2]->firstCl->nextCluster = 0;
+
+
+  return NULL;  
+}
 
 //-----------------------------//
 //  Readdir                    //
@@ -116,37 +172,35 @@ static int cl_readdir(const char *path, void *buf, fuse_fill_dir_t filler, off_t
   (void) offset; 
   (void) fi;
   
-  NodeType* node = seekConcreteFile(path);
-  LinkCl tmpcluster = node->firstCl;
-
-  char mybuf[100];
-  strcpy(mybuf,tmpcluster->content);
+  char mybuf[100] ="";
+  char sep[10]=" ";
+  char *istr;
+  char *tmp;
+  
+  NodeType* node = seekConcreteFile(path);  //берём текущую дирректорию
+  LinkCl tmpcluster = node->firstCl;        //и её первый кластер
+  
+  strcpy(mybuf,tmpcluster->content);        //считываем содержимое
   tmpcluster = tmpcluster->nextCluster;
   while(tmpcluster != 0)
   {
-    printf("%s\n", tmpcluster->content);
     strcat(mybuf, tmpcluster->content);
-    printf("%s\n", mybuf);
-    tmpcluster = tmpcluster->nextCluster;
-   } 
-   char sep[10]=" ";
-
-   char *istr;
-   char *tmp;
-   istr = strtok (mybuf,sep);
-   int flag = 1;
-   printf("Files\n");
-   printf("cl_readdir -->%s\n", mybuf);
-   while (istr != NULL)
-   {
-      tmp=istr;
-      printf("%s\n", tmp);
-      if(flag > 0)
-        filler(buf, tmp , NULL, 0);
-      flag =-flag;
-      istr = strtok (NULL,sep);
-   }
-  
+    tmpcluster = tmpcluster->nextCluster;   //до последнего кластера
+  } 
+ 
+  istr = strtok(mybuf,sep);                //разбиваем на отдельные слова с пом. strtok
+  int flag = 1;
+   
+  while (istr != NULL)
+  {
+    tmp=istr;
+    if(flag > 0)                          //выводим только название файла/папки   
+    {                                     
+      filler(buf, tmp , NULL, 0);
+    }
+    flag =-flag;
+    istr = strtok(NULL,sep);
+  }
   return 0;
 }
 
@@ -165,21 +219,22 @@ static int cl_open(const char *path, struct fuse_file_info * fi)
 
 static int cl_read(const char *path, char *buf, size_t size, off_t offset, struct fuse_file_info *fi)
 {
-  size_t len; (void) fi; 
-  NodeType* mFile = seekConcreteFile(path);
-  if(mFile->isEmpty == 1)//(strcmp(path, mFile->path) != 0) 
-    return -ENOENT; 
-
-  LinkCl tmpcluster = mFile->firstCl;
-  *buf = '\0';
-  while(tmpcluster != 0)
+  size_t len; 
+  (void) fi; 
+  NodeType* mFile = seekConcreteFile(path); //берём файл
+  if(mFile->isEmpty == 1)                   //проверяем его "существование"
   {
-    printf("%s\n", tmpcluster->content);
+    return -ENOENT; 
+  }
+
+  LinkCl tmpcluster = mFile->firstCl; //берём первый кластер
+  *buf = '\0';
+  while(tmpcluster != 0)  //считываем весь
+  {
     strcat(buf, tmpcluster->content);
-    printf("%s\n", buf);
     tmpcluster = tmpcluster->nextCluster;
   }
-  strcat(buf, "\0");
+  strcat(buf, "\0");  //добавляем окончание строки на всякий случай
 
   return size; 
 }
@@ -190,19 +245,19 @@ static int cl_read(const char *path, char *buf, size_t size, off_t offset, struc
 
 static int cl_mknod(const char* path, mode_t mode, dev_t dev)
 {
-  char* rootPath = getRootName(path);
-  NodeType *dirNode = seekConcreteFile(rootPath);
+  char* rootPath = getRootName(path);             //берём имя дирректории для созд. файла 
+  NodeType *dirNode = seekConcreteFile(rootPath); //а затем находим этот файл
   int i = 0;
-  for(i =0; i<100; i++)
+  for(i =0; i<100; i++) //находим пустой файл
   {
-    if(files[i]->isEmpty == 1)
+    if(files[i]->isEmpty == 1)  
     {
       break;
     }
   }
 
-  files[i]->isEmpty = 0;
-  files[i]->firstCl = freeCluster;
+  files[i]->isEmpty = 0;                  //говорим, что он есть 
+  files[i]->firstCl = freeCluster;        //и задаём соответствующие параметры
   freeCluster = freeCluster->nextCluster;
   files[i]->firstCl->nextCluster = 0;
   char tmpName[30];
@@ -212,8 +267,7 @@ static int cl_mknod(const char* path, mode_t mode, dev_t dev)
   strcat(tmpName,getName(path));
   strcat(tmpName," ");
   strcat(tmpName,str);
-  printf("%s\n", tmpName);
-  writeToClusters(tmpName,dirNode->firstCl);
+  writeToClusters(tmpName,dirNode->firstCl);//записываем данные в кластер
   return 0;
 }
 
@@ -223,16 +277,16 @@ static int cl_mknod(const char* path, mode_t mode, dev_t dev)
 
 static int cl_write(const char *path, const char *content, size_t size, off_t offset, struct fuse_file_info *fi) 
 {
-  NodeType* node = seekConcreteFile(path);
-  writeToClusters(content,node->firstCl);
-  return 0; // Num of bytes written
+  NodeType* node = seekConcreteFile(path);//берём файл
+  writeToClusters(content,node->firstCl);//и записываем в него информацию
+  return 0; 
 }
 
 //-----------------------------//
 //  Mkdir                      //
 //-----------------------------//
 
-static int cl_mkdir(const char* path, mode_t mode)
+static int cl_mkdir(const char* path, mode_t mode)//здесь всё аналогично созданию файла, кроме isDir = 1;
 {
   char* rootPath = getRootName(path);
   NodeType *dirNode = seekConcreteFile(rootPath);
@@ -258,7 +312,6 @@ static int cl_mkdir(const char* path, mode_t mode)
   strcat(tmpName,getName(path));
   strcat(tmpName," ");
   strcat(tmpName,str);
-  printf("%s\n", tmpName);
   writeToClusters(tmpName,dirNode->firstCl);
 
   return 0;       
@@ -280,7 +333,7 @@ static int cl_truncate(const char *path, off_t size)
 static int cl_rmdir(const char *path)
 {
   NodeType *dir = seekConcreteFile(path);
-  //удаление файлов
+  //удаление всех файлов из дирректории
   LinkCl tmpcluster = dir->firstCl;
 
   char mybuf[100];
@@ -289,9 +342,7 @@ static int cl_rmdir(const char *path)
   tmpcluster = tmpcluster->nextCluster;
   while(tmpcluster != 0)
   {
-    printf("%s\n", tmpcluster->content);
     strcat(mybuf, tmpcluster->content);
-    printf("%s\n", mybuf);
     tmpcluster = tmpcluster->nextCluster;
   }
   char sep[10]=" ";
@@ -304,7 +355,6 @@ static int cl_rmdir(const char *path)
   while (istr != NULL)
   {
     tmp=istr;
-    printf("%s\n", tmp);
     if(flag < 0)
     {
       listOfRmFiles[++ind] = atoi(tmp);
@@ -314,9 +364,9 @@ static int cl_rmdir(const char *path)
   }
   for(int i = 0; i<=ind; i++)
   {
-    deleteFileFromCl(files[listOfRmFiles[i]]);
+    deleteFileFromCl(files[listOfRmFiles[i]]);//удаляются все файлы, содерж. в папке
   }
-  //удаление самой папки
+  //затем происходит удаление самой дирректории 
   deleteFileFromCl(dir);
   deleteFromDir(path);
 
@@ -361,58 +411,9 @@ static int cl_getattr(const char *path, struct stat *stbuf)
 //  Destroy                    //
 //-----------------------------//
 
-static void cl_destroy(void *a) {}
+static void cl_destroy(void *a) 
+{
 
-//-----------------------------//
-//  Init                       //
-//-----------------------------//
-
-static void *cl_init(struct fuse_conn_info * conn) 
-{//initialize
-  char *tmpFiles = " test 1 test1 2";
-  NodeType *myDir = (NodeType *)malloc(sizeof(NodeType));
-  myDir->isDir = 1;
-  myDir->idCluster = 0;  
-
-  createFreeClusters();
-  myDir->firstCl = freeCluster;
-  writeToClusters(tmpFiles, myDir->firstCl);
-  files[0] = myDir;
- 
-
-  //create files
-  for(int i = 1; i<100; i++)
-  {
-    NodeType *myFileTmp = (NodeType *)malloc(sizeof(NodeType));
-    myFileTmp->isEmpty = 1;
-    myFileTmp->isDir = 0;
-    files[i] = myFileTmp;
-  }
-    //create clusters
-
-  NodeType *myFile = (NodeType *)malloc(sizeof(NodeType));
-  myFile->idCluster = freeCluster->id;
-  LinkCl tmpcluster = freeCluster;
-  myFile->firstCl = freeCluster;
-  myFile->index = 1;
-  myFile->isEmpty = 0;
-  files[1] = myFile;
-  freeCluster = freeCluster->nextCluster;
-    
-
-  NodeType *myFile1 = (NodeType *)malloc(sizeof(NodeType));
-  myFile1->idCluster = freeCluster->id;
-  myFile1->firstCl = freeCluster;
-  myFile1->index = 2;
-  myFile1->isEmpty = 0;
-  files[2] = myFile1;
-  freeCluster = freeCluster->nextCluster;
-
-  files[1]->firstCl->nextCluster = 0;
-  files[2]->firstCl->nextCluster = 0;
-
-
-  return NULL;  
 }
 
 //-----------------------------//
@@ -437,9 +438,9 @@ static int cl_rename(const char* old, const char* new)
 //---------------------------------------   Мои вспомогательне функции   -------------------------------------------//
 //------------------------------------------------------------------------------------------------------------------//
 
-NodeType* seekFile(NodeType *node, char* name)
+NodeType* seekFile(NodeType *node, char* name)  //поиск файла
 {
-  LinkCl tmpcluster = node->firstCl;
+  LinkCl tmpcluster = node->firstCl;  
   char mybuf[100];
   strcpy(mybuf,tmpcluster->content);
   tmpcluster = tmpcluster->nextCluster;
@@ -521,21 +522,16 @@ void writeToClusters(const char * content, LinkCl cluster)
   printf("%d\n", len);
   int j = 0;
   LinkCl tmpCluster = cluster;
-  while(tmpCluster->isFull == 1)//пропустить
+  while(tmpCluster->isFull == 1) //пропускаем занятые кластеры
   {
     tmpCluster = tmpCluster->nextCluster;
   }
-  while(tmpCluster->content[j] != '\0'){
-    printf("%d\n", j++);
-  }
 
-  printf("%s\n", content);
   int i, iCon = -1;
-  LinkCl tmpClusterWrite = tmpCluster;
-  //добавление кластеров и дозапись
+  LinkCl tmpClusterWrite = tmpCluster;                      
   while(iCon<len)
   {
-    for(i = j; i<CLUSTERSIZE; i++)
+    for(i = j; i<CLUSTERSIZE; i++)  //запись в кластер происходит по 1 символу
     {
       if(iCon < len)
       {
@@ -543,37 +539,37 @@ void writeToClusters(const char * content, LinkCl cluster)
       }
     }
 
-    if(iCon < len)
-    {
-      tmpClusterWrite->isFull = 1;
-      if(tmpClusterWrite->nextCluster == 0)
-      {
-        tmpClusterWrite->nextCluster = freeCluster;
+    if(iCon < len)                                  //проверяется случайслучай, когда кластер закончился, 
+    {                                               //но не всё записано
+      tmpClusterWrite->isFull = 1;                  //говорится, что последний кластер забит
+      if(tmpClusterWrite->nextCluster == 0)         //и в случае отсутствия потомков
+      {                                             //(потомки могут быть при перезаписи файлов, когда часть содержимого удаляется)
+        tmpClusterWrite->nextCluster = freeCluster; //добавляется дополнительный кластер, что бы записать весь файл целиком
       }
       tmpClusterWrite = tmpCluster->nextCluster;
     }
-    j = 0;
+    j = 0;  //обнуляем счётчик, т.к.                     
   }
-  if(tmpClusterWrite->nextCluster !=0)
-  {
-    freeCluster  = tmpClusterWrite->nextCluster;
-    tmpClusterWrite->nextCluster = 0;
+  if(tmpClusterWrite->nextCluster !=0)            //если у последнего кластера имеются потомки 
+  {                                               //(т.к. эти кластеры берутся из очереди "свободных кластеров")
+    freeCluster  = tmpClusterWrite->nextCluster;  //первым в очереди свободных кластеров становится этот потомок
+    tmpClusterWrite->nextCluster = 0;             //и потомок последнего кластера убирается
   }
-  tmpClusterWrite->content[i] = '\0';
-
+  tmpClusterWrite->content[i] = '\0';             //объявление о конце содержимого
 }
-void createFreeClusters()
-{
+
+void createFreeClusters() //создаёт очередь пустых кластеров, которые следуют друг за другом с 1го по CLUSTERCOUNT
+{                         //(т.к. 0й принадлежит основной дирректории)
   freeCluster = (LinkCl)malloc(sizeof(ClusterType));
   LinkCl tmpCluster = freeCluster;
 
   char str[10];
   clusters[0] = tmpCluster;
-  for (int i = 1; i<CLUSTERCOUNT; i++){
+  for (int i = 1; i<CLUSTERCOUNT; i++)
+  {
     LinkCl cluster = (LinkCl)malloc(sizeof(ClusterType));
     
-    sprintf(str, "%d", i);
-    //проверка кластеров
+    sprintf(str, "%d", i);  //проверка кластеров  
     tmpCluster->isFull = 0;
     tmpCluster->id = i;
     tmpCluster->nextCluster = cluster;
@@ -599,21 +595,24 @@ char* getName(const char* path)
   return tmp;
 }
 
-char* getRootName(const char* path)
+char* getRootName(const char* path)//получение имени папки, в котором непосредственно находится файл
 {
   char *tmpPath = (char *)malloc(sizeof(char)*strlen(path));
   strcpy(tmpPath,path);
   int i = 0;
-  for(i = strlen(tmpPath); i>=0; i--){
+  for(i = strlen(tmpPath); i>=0; i--)
+  {
     if(tmpPath[i] == '/')
+    {
       break;
+    }
   }
   printf("\n");
   tmpPath[i+1] = '\0';
   return tmpPath;
 }
 
-LinkCl getEndCl()
+LinkCl getEndCl()//получение последнего кластера
 {
   LinkCl tmpcluster = freeCluster;
   while(tmpcluster->nextCluster != 0)
@@ -625,15 +624,15 @@ LinkCl getEndCl()
 
 void deleteFileFromCl(NodeType* node)
 {
-  node->isEmpty = 1;
-  LinkCl tmpcluster = node->firstCl;
+  node->isEmpty = 1;                  //говорим, что его не существует
+  LinkCl tmpcluster = node->firstCl;  //берём первый кластер файла
 
   while(tmpcluster->nextCluster != 0)
   {
     tmpcluster = tmpcluster->nextCluster;
-  }
-  tmpcluster->nextCluster = freeCluster;
-  freeCluster = node->firstCl;
+  } //доходим до последнего кластера                             
+  tmpcluster->nextCluster = freeCluster;  //к последнему кластеру привязываем в потомки первый кластер свободной очереди
+  freeCluster = node->firstCl;            //и первым в очереди пустых кластеров делаем первый кластер удаляемого файла
 }
 
 void deleteFromDir(const char* path)
@@ -664,7 +663,6 @@ void deleteFromDir(const char* path)
     strcat(dirData, tmpcluster->content);
     tmpcluster = tmpcluster->nextCluster;
   } 
-  printf("OLD%s\n", dirData);
   char sep[10]=" ";
   char *istr;
   char *tmp;
@@ -694,7 +692,6 @@ void deleteFromDir(const char* path)
     istr = strtok (NULL,sep);
   }
   
-  printf("NEW%s\n", newDirData);
   dirNode->firstCl->content[0] = '\0';
 
   tmpcluster = getEndCl();
